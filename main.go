@@ -72,15 +72,15 @@ func main() {
 
 	// start the server in a goroutine
 	go func() {
-		log.Printf("starting file server on %s serving %s", addr, absDir)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			loggerError.Fatalf("server error: %v", err)
+		loggerInfo.Printf("starting file server on %s serving %s", addr, absDir)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			loggerError.Printf("server error: %v", err)
 		}
 	}()
 
 	// wait for interrupt signal
 	<-stop
-	log.Printf("shutting down server, timeout: %s", timeout)
+	loggerInfo.Printf("shutting down server, timeout: %s", timeout)
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -89,14 +89,10 @@ func main() {
 		loggerError.Fatalf("server shutdown failed: %v", err)
 	}
 
-	log.Println("server stopped")
+	loggerInfo.Println("server stopped")
 }
 
 func checkDirectory(dir string) (string, error) {
-	if dir == "" {
-		return "", errors.New("directory cannot be empty")
-	}
-
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return "", fmt.Errorf("failed to get absolute path: %w", err)

@@ -14,4 +14,5 @@ func UnveilBlock() error { return unix.UnveilBlock() }
 
 // Pledge restricts the system calls available to the process.
 // The promises string contains space-separated pledge promises.
+// The unix.Pledge 2nd parameter is empty string, because the process doesn't use exec syscalls.
 func Pledge(promises string) error { return unix.Pledge(promises, "") }

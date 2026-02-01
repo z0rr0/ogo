@@ -2,8 +2,11 @@
 package middleware
 
 import (
+	"bufio"
+	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"time"
 )
@@ -28,6 +31,21 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 	return rw.ResponseWriter.Write(b)
 }
 
+// Flush implements http.Flusher interface if the underlying ResponseWriter supports it.
+func (rw *responseWriter) Flush() {
+	if flusher, ok := rw.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Hijack implements http.Hijacker interface if the underlying ResponseWriter supports it.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hijacker, ok := rw.ResponseWriter.(http.Hijacker); ok {
+		return hijacker.Hijack()
+	}
+	return nil, nil, fmt.Errorf("http.Hijacker not implemented by underlying ResponseWriter")
+}
+
 // Logging wraps the handler and logs requests using the provided logger
 func Logging(h http.Handler, loggerDebug, loggerInfo *log.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -42,8 +60,8 @@ func Logging(h http.Handler, loggerDebug, loggerInfo *log.Logger) http.Handler {
 		wrapped := &responseWriter{ResponseWriter: w}
 		h.ServeHTTP(wrapped, r)
 
-		duration := time.Since(start)
-		loggerDebug.Printf("response [%d]: %s duration: %s", requestID, urlPath, duration.String())
+		duration := time.Since(start).Round(time.Millisecond)
+		loggerDebug.Printf("response [%d]: %s duration: %v", requestID, urlPath, duration)
 		loggerInfo.Printf("response [%d]: %s %s: %d", requestID, method, urlPath, wrapped.statusCode)
 	})
 }
