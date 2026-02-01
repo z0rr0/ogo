@@ -1,5 +1,6 @@
 //go:build openbsd
 
+// Package sandbox provides sandboxing functions for OpenBSD.
 package sandbox
 
 import "golang.org/x/sys/unix"
