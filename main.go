@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -47,11 +48,6 @@ func main() {
 		log.Fatalf("%s is not a directory", absDir)
 	}
 
-	// Apply OpenBSD-specific security restrictions if available
-	if err := setupSecurity(absDir); err != nil {
-		log.Fatalf("failed to setup security: %v", err)
-	}
-
 	fileServer := http.FileServer(http.Dir(absDir))
 	http.Handle("/", fileServer)
 
@@ -60,14 +56,26 @@ func main() {
 		Handler: http.DefaultServeMux,
 	}
 
+	// Create listener before applying security restrictions
+	// This allows the socket to be bound before pledge/unveil on OpenBSD
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("failed to create listener: %v", err)
+	}
+
+	// Apply OpenBSD-specific security restrictions after binding the socket
+	if err := setupSecurity(absDir); err != nil {
+		log.Fatalf("failed to setup security: %v", err)
+	}
+
 	// Channel to listen for interrupt signals
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	// Start server in a goroutine
+	// Start server in a goroutine using the pre-opened listener
 	go func() {
 		log.Printf("Starting file server on %s serving %s", addr, absDir)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server error: %v", err)
 		}
 	}()
