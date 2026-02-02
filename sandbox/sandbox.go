@@ -3,7 +3,11 @@
 // Package sandbox provides sandboxing functions for OpenBSD.
 package sandbox
 
-import "golang.org/x/sys/unix"
+import (
+	"log/slog"
+
+	"golang.org/x/sys/unix"
+)
 
 // Unveil adds a path to the list of unveiled paths with specified permissions.
 // The perms string can contain r (read), w (write), x (execute), and c (create).
