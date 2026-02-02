@@ -1,0 +1,27 @@
+#!/bin/ksh
+# $OpenBSD$
+
+# Installation:
+# 1. build and move ogo to /usr/local/bin/
+# 2. create system user: useradd -s /sbin/nologin -d /var/empty -c "file service" _ogo
+# 3. prepare working directory: mkdir /var/ogo && chown _ogo:wheel /var/ogo
+# 4. touch /var/log/ogo.log && chown _ogo:wheel /var/log/ogo.log
+# 5. cp rcd /etc/rc.d/ogo && chmod 755 /etc/rc.d/ogo
+# 6. rcctl enable ogo
+#
+# Service commands:
+# rcctl start ogo
+# rcctl check ogo
+# rcctl stop ogo
+
+daemon="/usr/local/bin/ogo"
+daemon_user="_ogo"
+daemon_flags="-v -d /var/ogo >>/var/log/ogo.log 2>&1"
+
+. /etc/rc.d/rc.subr
+
+pexp="/usr/local/bin/ogo -v -d /var/ogo"
+rc_bg=YES
+rc_reload=NO
+
+rc_cmd $1
