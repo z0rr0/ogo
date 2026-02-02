@@ -18,6 +18,12 @@ import (
 	"github.com/z0rr0/ogo/sandbox"
 )
 
+const (
+	fatalDirCode = iota + 1
+	fatalSandboxCode
+	fatalServerCode
+)
+
 func main() {
 	var (
 		dir     = "."
@@ -36,12 +42,12 @@ func main() {
 
 	absDir, err := checkDirectory(dir)
 	if err != nil {
-		fatal(err, "invalid directory")
+		fatal(fatalDirCode, err, "invalid directory")
 	}
 
 	// apply OpenBSD-specific security restrictions if available
 	if err = setupSecurity(absDir); err != nil {
-		fatal(err, "failed to setup security restrictions")
+		fatal(fatalSandboxCode, err, "failed to setup security restrictions")
 	}
 
 	fileServer := http.FileServerFS(os.DirFS(absDir))
@@ -56,17 +62,21 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
-	// start the server in a goroutine
+	errCh := make(chan error, 1)
 	go func() {
 		slog.Info("starting file server", "address", addr, "directory", absDir)
 		if listenErr := server.ListenAndServe(); listenErr != nil && !errors.Is(listenErr, http.ErrServerClosed) {
-			slog.Error("failed to start file server", "error", listenErr)
+			errCh <- listenErr
+			close(errCh)
 		}
 	}()
 
-	// wait for interrupt signal
-	<-stop
-	slog.Info("shutting down server", "timeout", timeout)
+	select {
+	case err = <-errCh:
+		fatal(fatalServerCode, err, "server failed")
+	case <-stop:
+		slog.Info("shutting down server", "timeout", timeout)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -78,6 +88,7 @@ func main() {
 	slog.Info("stopped")
 }
 
+// checkDirectory verifies that the provided path is a valid directory.
 func checkDirectory(dir string) (string, error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
@@ -95,6 +106,7 @@ func checkDirectory(dir string) (string, error) {
 	return absDir, nil
 }
 
+// setupSecurity applies OpenBSD-specific security restrictions using unveil and pledge.
 func setupSecurity(absDir string) error {
 	err := sandbox.Unveil(absDir, "r")
 	if err != nil {
@@ -112,6 +124,7 @@ func setupSecurity(absDir string) error {
 	return nil
 }
 
+// setupLogger configures the global logger with the specified output and verbosity.
 func setupLogger(w io.Writer, verbose bool) {
 	level := slog.LevelInfo
 	timeFormat := time.RFC3339
@@ -141,7 +154,8 @@ func setupLogger(w io.Writer, verbose bool) {
 	slog.SetDefault(logger)
 }
 
-func fatal(err error, msg string) {
+// fatal logs the error message and exits the program with the specified code.
+func fatal(code int, err error, msg string) {
 	slog.Error(msg, "error", err)
-	os.Exit(1)
+	os.Exit(code)
 }

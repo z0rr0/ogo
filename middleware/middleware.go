@@ -50,11 +50,9 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 func Logging(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := rand.Uint64() // pseudo random number
-		urlPath := r.URL.Path
-		method := r.Method
 		start := time.Now()
 
-		logger := slog.Default().With("id", requestID, "method", method, "path", urlPath)
+		logger := slog.Default().With("id", requestID, "method", r.Method, "path", r.URL.Path)
 		logger.Info("request", "remote", r.RemoteAddr)
 
 		wrapped := &responseWriter{ResponseWriter: w}
