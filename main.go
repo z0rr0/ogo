@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,17 +18,11 @@ import (
 	"github.com/z0rr0/ogo/sandbox"
 )
 
-var (
-	loggerDebug = log.New(io.Discard, "DEBUG: ", log.Ldate|log.Ltime|log.Lmicroseconds|log.Llongfile)
-	loggerInfo  = log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-	loggerError = log.New(os.Stderr, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-)
-
 func main() {
 	var (
-		dir     string        = "."
-		addr                  = ":8080"
-		timeout time.Duration = 5 * time.Second
+		dir     = "."
+		addr    = ":8080"
+		timeout = 5 * time.Second
 		verbose bool
 	)
 
@@ -38,28 +32,20 @@ func main() {
 	flag.BoolVar(&verbose, "v", false, "enable debug logging")
 	flag.Parse()
 
-	if verbose {
-		loggerDebug.SetOutput(os.Stdout)
-	}
-
-	if dir == "" {
-		loggerError.Println("Error: -d flag is required")
-		flag.Usage()
-		os.Exit(1)
-	}
+	setupLogger(os.Stdout, verbose)
 
 	absDir, err := checkDirectory(dir)
 	if err != nil {
-		loggerError.Fatalf("failed directory: %v", err)
+		fatal(err, "invalid directory")
 	}
 
 	// apply OpenBSD-specific security restrictions if available
-	if err := setupSecurity(absDir); err != nil {
-		loggerError.Fatalf("failed to setup security: %v", err)
+	if err = setupSecurity(absDir); err != nil {
+		fatal(err, "failed to setup security restrictions")
 	}
 
 	fileServer := http.FileServerFS(os.DirFS(absDir))
-	loggingServer := middleware.Logging(fileServer, loggerDebug, loggerInfo)
+	loggingServer := middleware.Logging(fileServer)
 	http.Handle("/", loggingServer)
 
 	server := &http.Server{
@@ -72,24 +58,24 @@ func main() {
 
 	// start the server in a goroutine
 	go func() {
-		loggerInfo.Printf("starting file server on %s serving %s", addr, absDir)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			loggerError.Printf("server error: %v", err)
+		slog.Info("starting file server", "address", addr, "directory", absDir)
+		if listenErr := server.ListenAndServe(); listenErr != nil && !errors.Is(listenErr, http.ErrServerClosed) {
+			slog.Error("failed to start file server", "error", listenErr)
 		}
 	}()
 
 	// wait for interrupt signal
 	<-stop
-	loggerInfo.Printf("shutting down server, timeout: %s", timeout)
+	slog.Info("shutting down server", "timeout", timeout)
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	if err := server.Shutdown(ctx); err != nil {
-		loggerError.Fatalf("server shutdown failed: %v", err)
+	if err = server.Shutdown(ctx); err != nil {
+		slog.Error("failed to shutdown server gracefully", "error", err)
 	}
 
-	loggerInfo.Println("server stopped")
+	slog.Info("stopped")
 }
 
 func checkDirectory(dir string) (string, error) {
@@ -124,4 +110,38 @@ func setupSecurity(absDir string) error {
 	}
 
 	return nil
+}
+
+func setupLogger(w io.Writer, verbose bool) {
+	level := slog.LevelInfo
+	timeFormat := time.RFC3339
+
+	if verbose {
+		level = slog.LevelDebug
+		timeFormat = time.RFC3339Nano
+	}
+	opts := &slog.HandlerOptions{
+		Level:     level,
+		AddSource: verbose,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			switch a.Key {
+			case slog.SourceKey:
+				if src, ok := a.Value.Any().(*slog.Source); ok {
+					src.File = filepath.Base(src.File)
+					return slog.Any(slog.SourceKey, src)
+				}
+			case slog.TimeKey:
+				t := a.Value.Time()
+				return slog.String(slog.TimeKey, t.Format(timeFormat))
+			}
+			return a
+		},
+	}
+	logger := slog.New(slog.NewTextHandler(w, opts))
+	slog.SetDefault(logger)
+}
+
+func fatal(err error, msg string) {
+	slog.Error(msg, "error", err)
+	os.Exit(1)
 }

@@ -4,7 +4,7 @@ package middleware
 import (
 	"bufio"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand"
 	"net"
 	"net/http"
@@ -47,21 +47,20 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 // Logging wraps the handler and logs requests using the provided logger
-func Logging(h http.Handler, loggerDebug, loggerInfo *log.Logger) http.Handler {
+func Logging(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// pseudo random number
-		requestID := rand.Uint64()
+		requestID := rand.Uint64() // pseudo random number
 		urlPath := r.URL.Path
 		method := r.Method
 		start := time.Now()
 
-		loggerDebug.Printf("request [%d]: %s %s from %s", requestID, method, urlPath, r.RemoteAddr)
+		logger := slog.Default().With("id", requestID, "method", method, "path", urlPath)
+		logger.Info("request", "remote", r.RemoteAddr)
 
 		wrapped := &responseWriter{ResponseWriter: w}
 		h.ServeHTTP(wrapped, r)
 
 		duration := time.Since(start).Round(time.Millisecond)
-		loggerDebug.Printf("response [%d]: %s duration: %v", requestID, urlPath, duration)
-		loggerInfo.Printf("response [%d]: %s %s: %d", requestID, method, urlPath, wrapped.statusCode)
+		logger.Info("response", "duration", duration, "status", wrapped.statusCode)
 	})
 }

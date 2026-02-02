@@ -3,7 +3,7 @@ package middleware
 import (
 	"bufio"
 	"bytes"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -114,7 +114,7 @@ func TestResponseWriter_Hijack_NotSupported(t *testing.T) {
 		t.Error("expected nil buffer")
 	}
 	if err == nil {
-		t.Error("expected error when Hijacker not implemented")
+		t.Fatal("expected error when Hijacker not implemented")
 	}
 	if !strings.Contains(err.Error(), "http.Hijacker not implemented") {
 		t.Errorf("unexpected error message: %v", err)
@@ -147,16 +147,18 @@ func TestResponseWriter_Hijack_Supported(t *testing.T) {
 }
 
 func TestLogging(t *testing.T) {
-	var debugBuf, infoBuf bytes.Buffer
-	loggerDebug := log.New(&debugBuf, "", 0)
-	loggerInfo := log.New(&infoBuf, "", 0)
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+	slog.SetDefault(logger)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	})
 
-	wrapped := Logging(handler, loggerDebug, loggerInfo)
+	wrapped := Logging(handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/test/path", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -169,78 +171,71 @@ func TestLogging(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 
-	// Check debug log contains request info
-	debugLog := debugBuf.String()
-	if !strings.Contains(debugLog, "GET") {
-		t.Error("debug log should contain method")
+	// Check log output contains expected info
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "GET") {
+		t.Error("log should contain method")
 	}
-	if !strings.Contains(debugLog, "/test/path") {
-		t.Error("debug log should contain URL path")
+	if !strings.Contains(logOutput, "/test/path") {
+		t.Error("log should contain URL path")
 	}
-	if !strings.Contains(debugLog, "127.0.0.1:12345") {
-		t.Error("debug log should contain remote address")
+	if !strings.Contains(logOutput, "127.0.0.1:12345") {
+		t.Error("log should contain remote address")
 	}
-	if !strings.Contains(debugLog, "duration") {
-		t.Error("debug log should contain duration")
+	if !strings.Contains(logOutput, "duration") {
+		t.Error("log should contain duration")
 	}
-
-	// Check info log contains response info
-	infoLog := infoBuf.String()
-	if !strings.Contains(infoLog, "GET") {
-		t.Error("info log should contain method")
-	}
-	if !strings.Contains(infoLog, "/test/path") {
-		t.Error("info log should contain URL path")
-	}
-	if !strings.Contains(infoLog, "200") {
-		t.Error("info log should contain status code")
+	if !strings.Contains(logOutput, "200") {
+		t.Error("log should contain status code")
 	}
 }
 
 func TestLogging_ErrorStatus(t *testing.T) {
-	var debugBuf, infoBuf bytes.Buffer
-	loggerDebug := log.New(&debugBuf, "", 0)
-	loggerInfo := log.New(&infoBuf, "", 0)
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+	slog.SetDefault(logger)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 
-	wrapped := Logging(handler, loggerDebug, loggerInfo)
+	wrapped := Logging(handler)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/error", nil)
 	rec := httptest.NewRecorder()
 
 	wrapped.ServeHTTP(rec, req)
 
-	infoLog := infoBuf.String()
-	if !strings.Contains(infoLog, "500") {
-		t.Error("info log should contain 500 status code")
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "500") {
+		t.Error("log should contain 500 status code")
 	}
-	if !strings.Contains(infoLog, "POST") {
-		t.Error("info log should contain POST method")
+	if !strings.Contains(logOutput, "POST") {
+		t.Error("log should contain POST method")
 	}
 }
 
 func TestLogging_ImplicitOKStatus(t *testing.T) {
-	var debugBuf, infoBuf bytes.Buffer
-	loggerDebug := log.New(&debugBuf, "", 0)
-	loggerInfo := log.New(&infoBuf, "", 0)
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+	slog.SetDefault(logger)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Write without explicit WriteHeader - should default to 200
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	})
 
-	wrapped := Logging(handler, loggerDebug, loggerInfo)
+	wrapped := Logging(handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
 	wrapped.ServeHTTP(rec, req)
 
-	infoLog := infoBuf.String()
-	if !strings.Contains(infoLog, "200") {
-		t.Error("info log should contain 200 status code for implicit OK")
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "200") {
+		t.Error("log should contain 200 status code for implicit OK")
 	}
 }
