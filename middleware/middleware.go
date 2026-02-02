@@ -74,12 +74,12 @@ func Logging(h http.Handler) http.Handler {
 		start := time.Now()
 
 		logger := slog.Default().With("id", requestID, "method", r.Method, "path", r.URL.Path)
-		logger.Info("request", "remote", r.RemoteAddr)
+		logger.Info("request_", "remote", r.RemoteAddr)
 
 		wrapped := &responseWriter{ResponseWriter: w}
 		h.ServeHTTP(wrapped, r)
 
-		duration := time.Since(start).Round(time.Millisecond)
+		duration := time.Since(start)
 		logger.Info("response", "duration", duration, "status", wrapped.statusCode)
 	})
 }
@@ -93,6 +93,7 @@ func getRequestID() (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	if n != requestIDSize {
 		return "", errors.New("unexpected number of bytes read")
 	}
