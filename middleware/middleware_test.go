@@ -239,3 +239,156 @@ func TestLogging_ImplicitOKStatus(t *testing.T) {
 		t.Error("log should contain 200 status code for implicit OK")
 	}
 }
+
+func TestGetRequestID(t *testing.T) {
+	id, err := getRequestID()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should be hex encoded, so 8 bytes = 16 hex chars
+	expectedLen := requestIDSize * 2
+	if len(id) != expectedLen {
+		t.Errorf("expected request ID length %d, got %d", expectedLen, len(id))
+	}
+
+	// Should be valid hex
+	for _, c := range id {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			t.Errorf("request ID contains invalid hex character: %c", c)
+		}
+	}
+}
+
+func TestGetRequestID_Unique(t *testing.T) {
+	seen := make(map[string]bool)
+	const iterations = 1000
+
+	for i := range iterations {
+		id, err := getRequestID()
+		if err != nil {
+			t.Fatalf("unexpected error on iteration %d: %v", i, err)
+		}
+		if seen[id] {
+			t.Errorf("duplicate request ID generated: %s", id)
+		}
+		seen[id] = true
+	}
+}
+
+func TestLogging_ContainsRequestID(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+	slog.SetDefault(logger)
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	wrapped := Logging(handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	wrapped.ServeHTTP(rec, req)
+
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "id=") {
+		t.Error("log should contain request ID field")
+	}
+}
+
+func TestLogging_RequestIDConsistentAcrossLogLines(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+	slog.SetDefault(logger)
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	wrapped := Logging(handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+
+	wrapped.ServeHTTP(rec, req)
+
+	logOutput := logBuf.String()
+	lines := strings.Split(strings.TrimSpace(logOutput), "\n")
+
+	if len(lines) < 2 {
+		t.Fatalf("expected at least 2 log lines, got %d", len(lines))
+	}
+
+	// Extract request IDs from each line
+	var ids []string
+	for _, line := range lines {
+		// Find id= in the line
+		_, after, found := strings.Cut(line, "id=")
+		if !found {
+			t.Errorf("log line missing id field: %s", line)
+			continue
+		}
+		// Extract the ID value (until next space)
+		id, _, _ := strings.Cut(after, " ")
+		ids = append(ids, id)
+	}
+
+	// All IDs should be the same
+	if len(ids) > 1 {
+		for i := 1; i < len(ids); i++ {
+			if ids[i] != ids[0] {
+				t.Errorf("request ID mismatch: line 0 has %s, line %d has %s", ids[0], i, ids[i])
+			}
+		}
+	}
+}
+
+func TestLogging_DifferentRequestsHaveDifferentIDs(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+	slog.SetDefault(logger)
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	wrapped := Logging(handler)
+
+	// Make first request
+	req1 := httptest.NewRequest(http.MethodGet, "/first", nil)
+	rec1 := httptest.NewRecorder()
+	wrapped.ServeHTTP(rec1, req1)
+
+	firstOutput := logBuf.String()
+	logBuf.Reset()
+
+	// Make second request
+	req2 := httptest.NewRequest(http.MethodGet, "/second", nil)
+	rec2 := httptest.NewRecorder()
+	wrapped.ServeHTTP(rec2, req2)
+
+	secondOutput := logBuf.String()
+
+	// Extract IDs
+	extractID := func(output string) string {
+		_, after, found := strings.Cut(output, "id=")
+		if !found {
+			return ""
+		}
+		id, _, _ := strings.Cut(after, " ")
+		return id
+	}
+
+	id1 := extractID(firstOutput)
+	id2 := extractID(secondOutput)
+
+	if id1 == "" || id2 == "" {
+		t.Fatal("failed to extract request IDs from log output")
+	}
+
+	if id1 == id2 {
+		t.Errorf("different requests should have different IDs, both got: %s", id1)
+	}
+}

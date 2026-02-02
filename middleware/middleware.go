@@ -3,12 +3,29 @@ package middleware
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"net"
 	"net/http"
+	"strconv"
+	"sync"
 	"time"
+)
+
+const (
+	// requestIDSize is the size of the request ID in bytes.
+	requestIDSize = 8
+)
+
+var (
+	requestIDPool = sync.Pool{
+		New: func() any {
+			return make([]byte, requestIDSize)
+		},
+	}
 )
 
 // responseWriter wraps http.ResponseWriter to capture status code.
@@ -49,7 +66,11 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 // Logging wraps the handler and logs requests using the provided logger
 func Logging(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestID := rand.Uint64() // pseudo random number
+		requestID, err := getRequestID()
+		if err != nil {
+			slog.Error("requestID", "error", err)
+			requestID = strconv.Itoa(time.Now().Nanosecond()) // fallback
+		}
 		start := time.Now()
 
 		logger := slog.Default().With("id", requestID, "method", r.Method, "path", r.URL.Path)
@@ -61,4 +82,20 @@ func Logging(h http.Handler) http.Handler {
 		duration := time.Since(start).Round(time.Millisecond)
 		logger.Info("response", "duration", duration, "status", wrapped.statusCode)
 	})
+}
+
+// getRequestID generates a random request ID using a pool of bytes.
+func getRequestID() (string, error) {
+	b := requestIDPool.Get().([]byte)
+	defer requestIDPool.Put(b)
+
+	n, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	if n != requestIDSize {
+		return "", errors.New("unexpected number of bytes read")
+	}
+
+	return hex.EncodeToString(b), nil
 }
