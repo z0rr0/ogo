@@ -24,6 +24,8 @@ const (
 	fatalServerCode
 )
 
+const serverTimeout = 3 * time.Second
+
 func main() {
 	var (
 		dir     = "."
@@ -55,8 +57,9 @@ func main() {
 	http.Handle("/", loggingServer)
 
 	server := &http.Server{
-		Addr:    addr,
-		Handler: http.DefaultServeMux,
+		Addr:              addr,
+		Handler:           http.DefaultServeMux,
+		ReadHeaderTimeout: serverTimeout,
 	}
 
 	stop := make(chan os.Signal, 1)

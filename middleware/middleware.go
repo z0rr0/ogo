@@ -23,7 +23,8 @@ const (
 var (
 	requestIDPool = sync.Pool{
 		New: func() any {
-			return make([]byte, requestIDSize)
+			b := make([]byte, requestIDSize)
+			return &b
 		},
 	}
 )
@@ -86,8 +87,9 @@ func Logging(h http.Handler) http.Handler {
 
 // getRequestID generates a random request ID using a pool of bytes.
 func getRequestID() (string, error) {
-	b := requestIDPool.Get().([]byte)
-	defer requestIDPool.Put(b)
+	bp := requestIDPool.Get().(*[]byte)
+	defer requestIDPool.Put(bp)
+	b := *bp
 
 	n, err := rand.Read(b)
 	if err != nil {

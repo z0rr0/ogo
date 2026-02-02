@@ -31,6 +31,15 @@ go build -o ogo
 ./ogo -d /var/www -a :8080 -t 10s -v
 ```
 
+## Linter
+
+```sh
+golangci-lint -c golangci.yml run
+gosec ./...
+govulncheck ./...
+staticcheck ./...
+```
+
 ## OpenBSD Security
 
 On OpenBSD, uses `pledge` (stdio, rpath, inet, dns) and `unveil` (read-only access to served directory).
