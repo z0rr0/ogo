@@ -35,7 +35,7 @@ func main() {
 	flag.StringVar(&addr, "a", addr, "listen address")
 	flag.StringVar(&dir, "d", dir, "directory to show files")
 	flag.DurationVar(&timeout, "t", timeout, "shutdown timeout")
-	flag.BoolVar(&verbose, "v", false, "enable debug logging")
+	flag.BoolVar(&verbose, "v", verbose, "enable debug logging")
 	flag.Parse()
 
 	setupLogger(os.Stdout, verbose)
