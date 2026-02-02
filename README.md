@@ -8,6 +8,9 @@ Simple HTTP file server in Go with OpenBSD security features (pledge/unveil).
 
 ```bash
 go build -o ogo
+
+# build for Raspberry PI OpenBSD with security features
+GOOS=openbsd GOARCH=arm64 go build -o ogo
 ```
 
 ## Usage
