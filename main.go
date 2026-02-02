@@ -105,7 +105,7 @@ func setupSecurity(absDir string) error {
 		return fmt.Errorf("failed to block unveil: %w", err)
 	}
 
-	if err = sandbox.Pledge("stdio rpath inet dns"); err != nil {
+	if err = sandbox.Pledge("stdio rpath inet"); err != nil {
 		return fmt.Errorf("failed to pledge: %w", err)
 	}
 
