@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -21,7 +20,7 @@ const (
 )
 
 var (
-	requestIDPool = sync.Pool{
+	requestIDPool = sync.Pool{ //nolint:gochecknoglobals // pool for request ID bytes
 		New: func() any {
 			b := make([]byte, requestIDSize)
 			return &b
@@ -32,6 +31,7 @@ var (
 // responseWriter wraps http.ResponseWriter to capture status code.
 type responseWriter struct {
 	http.ResponseWriter
+
 	statusCode int
 }
 
@@ -46,6 +46,7 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 	if rw.statusCode == 0 {
 		rw.statusCode = http.StatusOK
 	}
+
 	return rw.ResponseWriter.Write(b)
 }
 
@@ -61,10 +62,11 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if hijacker, ok := rw.ResponseWriter.(http.Hijacker); ok {
 		return hijacker.Hijack()
 	}
-	return nil, nil, fmt.Errorf("http.Hijacker not implemented by underlying ResponseWriter")
+
+	return nil, nil, errors.New("http.Hijacker not implemented by underlying ResponseWriter")
 }
 
-// Logging wraps the handler and logs requests using the provided logger
+// Logging wraps the handler and logs requests using the provided logger.
 func Logging(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID, err := getRequestID()
@@ -72,6 +74,7 @@ func Logging(h http.Handler) http.Handler {
 			slog.Error("requestID", "error", err)
 			requestID = strconv.Itoa(time.Now().Nanosecond()) // fallback
 		}
+
 		start := time.Now()
 
 		logger := slog.Default().With("id", requestID, "method", r.Method, "path", r.URL.Path)
@@ -87,8 +90,13 @@ func Logging(h http.Handler) http.Handler {
 
 // getRequestID generates a random request ID using a pool of bytes.
 func getRequestID() (string, error) {
-	bp := requestIDPool.Get().(*[]byte)
+	bp, ok := requestIDPool.Get().(*[]byte)
+	if !ok {
+		return "", errors.New("failed to get bytes from pool")
+	}
+
 	defer requestIDPool.Put(bp)
+
 	b := *bp
 
 	n, err := rand.Read(b)

@@ -1,5 +1,6 @@
 //go:build !openbsd
 
+// Package sandbox provides platform-specific security restrictions using OpenBSD pledge/unveil.
 package sandbox
 
 import "log/slog"
