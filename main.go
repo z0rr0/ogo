@@ -46,11 +46,13 @@ func main() {
 	absDir, err := checkDirectory(dir)
 	if err != nil {
 		fatal(fatalDirCode, err, "invalid directory")
+		return // not required, only for clarity
 	}
 
 	// apply OpenBSD-specific security restrictions if available
 	if err = setupSecurity(absDir); err != nil {
 		fatal(fatalSandboxCode, err, "failed to setup security restrictions")
+		return
 	}
 
 	fileServer := http.FileServerFS(os.DirFS(absDir))
@@ -63,17 +65,17 @@ func main() {
 		ReadHeaderTimeout: serverTimeout,
 	}
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	backgroundCtx := context.Background()
+	ctx, cancel := signal.NotifyContext(backgroundCtx, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 	errCh := make(chan error, 1)
 
 	go func() {
-		slog.Info("starting file server", "address", addr, "directory", absDir)
-
+		slog.Info("starting", "address", addr, "directory", absDir)
 		listenErr := server.ListenAndServe()
+
 		if listenErr != nil && !errors.Is(listenErr, http.ErrServerClosed) {
 			errCh <- listenErr
-
 			close(errCh)
 		}
 	}()
@@ -81,15 +83,16 @@ func main() {
 	select {
 	case err = <-errCh:
 		fatal(fatalServerCode, err, "server failed")
-	case <-stop:
-		slog.Info("shutting down server", "timeout", timeout)
+		return
+	case <-ctx.Done():
+		slog.Info("shutdown", "timeout", timeout)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(backgroundCtx, timeout)
+	defer shutdownCancel()
 
-	if err = server.Shutdown(ctx); err != nil {
-		slog.Error("failed to shutdown server gracefully", "error", err)
+	if err = server.Shutdown(shutdownCtx); err != nil {
+		slog.Error("shutdown", "error", err)
 	}
 
 	slog.Info("stopped")
