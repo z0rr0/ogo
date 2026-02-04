@@ -197,5 +197,5 @@ func writePIDFile(path string) error {
 	}
 
 	slog.Debug("PID", "path", path)
-	return os.WriteFile(path, fmt.Appendf(nil, "%d\n", os.Getpid()), 0644)
+	return os.WriteFile(path, fmt.Appendf(nil, "%d\n", os.Getpid()), 0600)
 }

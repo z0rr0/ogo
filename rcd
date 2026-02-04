@@ -28,7 +28,7 @@ rc_reload=NO
 
 rc_pre() {
     # create pid file with correct permissions
-    install -o "$daemon_user" -g "$daemon_user" -m 644 /dev/null "$rc_pid_file"
+    install -o "$daemon_user" -g wheel -m 640 /dev/null "$rc_pid_file"
 }
 
 rc_cmd $1
