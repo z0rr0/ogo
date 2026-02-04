@@ -32,11 +32,13 @@ func main() {
 		dir     = "."
 		addr    = ":8080"
 		timeout = 5 * time.Second
+		pidFile string
 		verbose bool
 	)
 
 	flag.StringVar(&addr, "a", addr, "listen address")
 	flag.StringVar(&dir, "d", dir, "directory to show files")
+	flag.StringVar(&pidFile, "p", pidFile, "pid file path")
 	flag.DurationVar(&timeout, "t", timeout, "shutdown timeout")
 	flag.BoolVar(&verbose, "v", verbose, "enable debug logging")
 	flag.Parse()
@@ -50,7 +52,7 @@ func main() {
 	}
 
 	// apply OpenBSD-specific security restrictions if available
-	if err = setupSecurity(absDir); err != nil {
+	if err = setupSecurity(absDir, pidFile); err != nil {
 		fatal(fatalSandboxCode, err, "failed to setup security restrictions")
 		return
 	}
@@ -118,14 +120,25 @@ func checkDirectory(dir string) (string, error) {
 }
 
 // setupSecurity applies OpenBSD-specific security restrictions using unveil and pledge.
-func setupSecurity(absDir string) error {
+func setupSecurity(absDir, pidFile string) error {
 	err := sandbox.Unveil(absDir, "r")
 	if err != nil {
 		return fmt.Errorf("failed to unveil directory: %w", err)
 	}
 
+	if pidFile != "" {
+		if err = sandbox.Unveil(pidFile, "wc"); err != nil {
+			return fmt.Errorf("failed to unveil pid file: %w", err)
+		}
+	}
+
 	if err = sandbox.UnveilBlock(); err != nil {
 		return fmt.Errorf("failed to block unveil: %w", err)
+	}
+
+	// write pid file before pledge restricts file operations
+	if err = writePIDFile(pidFile); err != nil {
+		return fmt.Errorf("failed to write pid file: %w", err)
 	}
 
 	if err = sandbox.Pledge("stdio rpath inet"); err != nil {
@@ -171,3 +184,12 @@ func fatal(code int, err error, msg string) {
 	slog.Error(msg, "error", err)
 	os.Exit(code)
 }
+
+// writePIDFile writes the current process ID to the specified file.
+func writePIDFile(path string) error {
+	if path == "" {
+		return nil
+	}
+	return os.WriteFile(path, fmt.Appendf(nil, "%d\n", os.Getpid()), 0644)
+}
+

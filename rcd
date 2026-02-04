@@ -17,12 +17,12 @@
 
 daemon="/usr/local/sbin/ogo"
 daemon_user="_ogo"
-daemon_flags="-d /var/ogo"
+daemon_flags="-d /var/ogo -p /var/run/ogo.pid"
 daemon_logger="daemon.info"
 
 . /etc/rc.d/rc.subr
 
-pexp="/usr/local/sbin/ogo.* -d /var/ogo"
+rc_pid_file="/var/run/ogo.pid"
 rc_bg=YES
 rc_reload=NO
 
