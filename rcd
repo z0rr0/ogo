@@ -26,4 +26,8 @@ rc_pid_file="/var/run/ogo.pid"
 rc_bg=YES
 rc_reload=NO
 
+rc_pre() {
+	install -o _ogo -g _ogo -m 644 /dev/null "$rc_pid_file"
+}
+
 rc_cmd $1
