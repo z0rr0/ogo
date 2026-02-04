@@ -15,19 +15,20 @@
 #
 # Logs will be in /var/log/daemon
 
+rc_pid_file="/var/run/ogo.pid"
 daemon="/usr/local/sbin/ogo"
 daemon_user="_ogo"
-daemon_flags="-d /var/ogo -p /var/run/ogo.pid"
+daemon_flags="-d /var/ogo -p $rc_pid_file"
 daemon_logger="daemon.info"
 
 . /etc/rc.d/rc.subr
 
-rc_pid_file="/var/run/ogo.pid"
 rc_bg=YES
 rc_reload=NO
 
 rc_pre() {
-	install -o _ogo -g _ogo -m 644 /dev/null "$rc_pid_file"
+    # create pid file with correct permissions
+    install -o "$daemon_user" -g "$daemon_user" -m 644 /dev/null "$rc_pid_file"
 }
 
 rc_cmd $1

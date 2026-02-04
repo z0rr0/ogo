@@ -190,6 +190,12 @@ func writePIDFile(path string) error {
 	if path == "" {
 		return nil
 	}
+
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path: %w", err)
+	}
+
+	slog.Debug("PID", "path", path)
 	return os.WriteFile(path, fmt.Appendf(nil, "%d\n", os.Getpid()), 0644)
 }
-
