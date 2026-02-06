@@ -2,7 +2,7 @@
 # $OpenBSD$
 
 # Installation:
-# 1. build and move ogo to /usr/local/sbin/: install -m 755 ogo /usr/local/sbin/ogo
+# 1. build and move ogo to /usr/local/sbin/: install -m 755 -o _ogo -g wheel ogo /usr/local/sbin/ogo
 # 2. create system user: useradd -s /sbin/nologin -d /var/empty -c "file service" _ogo
 # 3. prepare working directory: mkdir /var/ogo && chown _ogo:wheel /var/ogo
 # 4. cp rcd /etc/rc.d/ogo && chmod 555 /etc/rc.d/ogo
